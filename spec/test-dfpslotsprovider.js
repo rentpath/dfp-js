@@ -2,7 +2,7 @@ import 'babel-polyfill';
 import React from 'react';
 import ReactDOM from 'react-dom';
 
-import TestUtils from 'react-addons-test-utils';
+import TestUtils from 'react-dom/test-utils';
 import { expect } from 'chai';
 import sinon from 'sinon';
 
@@ -18,15 +18,14 @@ describe('DFPSlotsProvider', () => {
       };
 
       component = TestUtils.renderIntoDocument(
-        <DFPSlotsProvider DFPSlotsProvider {...providerProps}>
+        <DFPSlotsProvider {...providerProps}>
           <AdSlot slotId={'testElement'} />
-        </DFPSlotsProvider>
+        </DFPSlotsProvider>,
       );
     });
 
     it('renders an adBox with the given elementId', () => {
-      const box = TestUtils.findRenderedDOMComponentWithClass(component,
-                                                              'adBox');
+      const box = TestUtils.findRenderedDOMComponentWithClass(component, 'adBox');
       expect(box.id).to.equal('testElement');
     });
   });
@@ -35,6 +34,7 @@ describe('DFPSlotsProvider', () => {
     beforeEach(() => {
       DFPManager.registerSlot = sinon.spy(DFPManager, 'registerSlot');
       DFPManager.unregisterSlot = sinon.spy(DFPManager, 'unregisterSlot');
+      DFPManager.setCollapseEmptyDivs = sinon.spy(DFPManager, 'setCollapseEmptyDivs');
     });
 
     it('Registers an AdSlot', () => {
@@ -49,9 +49,9 @@ describe('DFPSlotsProvider', () => {
       };
 
       TestUtils.renderIntoDocument(
-        <DFPSlotsProvider DFPSlotsProvider {...providerProps}>
+        <DFPSlotsProvider {...providerProps}>
           <AdSlot {...compProps} />
-        </DFPSlotsProvider>
+        </DFPSlotsProvider>,
       );
 
       sinon.assert.calledOnce(DFPManager.registerSlot);
@@ -72,12 +72,12 @@ describe('DFPSlotsProvider', () => {
       TestUtils.renderIntoDocument(
         <DFPSlotsProvider {...providerProps}>
           <AdSlot {...compProps} />
-        </DFPSlotsProvider>
+        </DFPSlotsProvider>,
       );
 
       expect(DFPManager.getRefreshableSlots()).to.contain.all.keys([compProps.slotId]);
       expect(DFPManager.getRefreshableSlots()[compProps.slotId]).to.contain.all.keys(
-        { ...providerProps, ...compProps }
+        { ...providerProps, ...compProps },
       );
     });
 
@@ -96,7 +96,7 @@ describe('DFPSlotsProvider', () => {
       TestUtils.renderIntoDocument(
         <DFPSlotsProvider {...providerProps} >
           <AdSlot {...compProps} />
-        </DFPSlotsProvider>
+        </DFPSlotsProvider>,
       );
       expect(Object.keys(DFPManager.getRefreshableSlots()).length).to.equal(0);
     });
@@ -114,7 +114,7 @@ describe('DFPSlotsProvider', () => {
       TestUtils.renderIntoDocument(
         <DFPSlotsProvider {...providerProps} >
           <AdSlot {...compProps} />
-        </DFPSlotsProvider>
+        </DFPSlotsProvider>,
       );
       expect(DFPManager.getSlotTargetingArguments(compProps.slotId))
         .to.contain.all.keys(providerProps.targetingArguments);
@@ -133,7 +133,7 @@ describe('DFPSlotsProvider', () => {
       TestUtils.renderIntoDocument(
         <DFPSlotsProvider {...providerProps} >
           <AdSlot {...compProps} />
-        </DFPSlotsProvider>
+        </DFPSlotsProvider>,
       );
       expect(DFPManager.getSlotTargetingArguments(compProps.slotId)).to.equal(null);
     });
@@ -149,12 +149,14 @@ describe('DFPSlotsProvider', () => {
         sizes: [[728, 90]],
       };
 
+
       const component = TestUtils.renderIntoDocument(
-        <DFPSlotsProvider {...providerProps} >
+        <DFPSlotsProvider {...providerProps}>
           <AdSlot {...compProps} />
-        </DFPSlotsProvider>
+        </DFPSlotsProvider>,
       );
 
+      // eslint-disable-next-line react/no-find-dom-node
       ReactDOM.unmountComponentAtNode(ReactDOM.findDOMNode(component).parentNode);
 
       sinon.assert.calledOnce(DFPManager.unregisterSlot);
@@ -162,9 +164,53 @@ describe('DFPSlotsProvider', () => {
                                    { slotId: compProps.slotId });
     });
 
+    it('collapseEmptyDivs is disabled by default', () => {
+      const providerProps = {
+        dfpNetworkId: '1000',
+        adUnit: 'foo/bar/baz',
+      };
+
+      const compProps = {
+        slotId: 'testElement1',
+        sizes: [[728, 90]],
+      };
+
+      TestUtils.renderIntoDocument(
+        <DFPSlotsProvider {...providerProps}>
+          <AdSlot {...compProps} />
+        </DFPSlotsProvider>,
+      );
+
+      sinon.assert.calledOnce(DFPManager.setCollapseEmptyDivs);
+      sinon.assert.calledWith(DFPManager.setCollapseEmptyDivs, null);
+    });
+
+    it('enable collapseEmptyDivs and set parameter to false', () => {
+      const providerProps = {
+        dfpNetworkId: '1000',
+        adUnit: 'foo/bar/baz',
+        collapseEmptyDivs: false,
+      };
+
+      const compProps = {
+        slotId: 'testElement1',
+        sizes: [[728, 90]],
+      };
+
+      TestUtils.renderIntoDocument(
+        <DFPSlotsProvider {...providerProps}>
+          <AdSlot {...compProps} />
+        </DFPSlotsProvider>,
+      );
+
+      sinon.assert.calledOnce(DFPManager.setCollapseEmptyDivs);
+      sinon.assert.calledWith(DFPManager.setCollapseEmptyDivs, false);
+    });
+
     afterEach(() => {
       DFPManager.registerSlot.restore();
       DFPManager.unregisterSlot.restore();
+      DFPManager.setCollapseEmptyDivs.restore();
       Object.keys(DFPManager.getRegisteredSlots()).forEach((slotId) => {
         DFPManager.unregisterSlot({ slotId });
       });
