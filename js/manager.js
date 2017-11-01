@@ -4,6 +4,7 @@ import * as Utils from './utils';
 let loadAlreadyCalled = false;
 let googleGPTScriptLoadPromise = null;
 const registeredSlots = {};
+const loadedGptSlots = {};
 let managerAlreadyInitialized = false;
 const globalTargetingArguments = {};
 
@@ -81,41 +82,44 @@ const DFPManager = Object.assign(new EventEmitter().setMaxListeners(0), {
     availableSlots = Object.keys(availableSlots)
       .filter(id => !availableSlots[id].loading)
       .reduce(
-      (result, id) => Object.assign(
-        result, {
-          [id]: Object.assign(availableSlots[id], { loading: true }),
-        },
-      ), {},
-    );
+        (result, id) => Object.assign(
+          result, {
+            [id]: Object.assign(availableSlots[id], { loading: true }),
+          },
+        ), {},
+      );
     this.getGoogletag().then((googletag) => {
       Object.keys(availableSlots).forEach((currentSlotId) => {
         availableSlots[currentSlotId].loading = false;
 
-        googletag.cmd.push(() => {
-          const slot = availableSlots[currentSlotId];
-          let gptSlot;
-          const adUnit = `${slot.dfpNetworkId}/${slot.adUnit}`;
-          if (slot.renderOutOfThePage === true) {
-            gptSlot = googletag.defineOutOfPageSlot(adUnit, currentSlotId);
-          } else {
-            gptSlot = googletag.defineSlot(adUnit, slot.sizes, currentSlotId);
-          }
-          slot.gptSlot = gptSlot;
-          const slotTargetingArguments = this.getSlotTargetingArguments(currentSlotId);
-          if (slotTargetingArguments !== null) {
-            Object.keys(slotTargetingArguments).forEach((varName) => {
-              slot.gptSlot.setTargeting(varName, slotTargetingArguments[varName]);
-            });
-          }
-          slot.gptSlot.addService(googletag.pubads());
-          if (slot.sizeMapping) {
-            let smbuilder = googletag.sizeMapping();
-            slot.sizeMapping.forEach((mapping) => {
-              smbuilder = smbuilder.addSize(mapping.viewport, mapping.sizes);
-            });
-            slot.gptSlot.defineSizeMapping(smbuilder.build());
-          }
-        });
+        if (!loadedGptSlots[currentSlotId]) {
+          loadedGptSlots[currentSlotId] = true;
+          googletag.cmd.push(() => {
+            const slot = availableSlots[currentSlotId];
+            let gptSlot;
+            const adUnit = `${slot.dfpNetworkId}/${slot.adUnit}`;
+            if (slot.renderOutOfThePage === true) {
+              gptSlot = googletag.defineOutOfPageSlot(adUnit, currentSlotId);
+            } else {
+              gptSlot = googletag.defineSlot(adUnit, slot.sizes, currentSlotId);
+            }
+            slot.gptSlot = gptSlot;
+            const slotTargetingArguments = this.getSlotTargetingArguments(currentSlotId);
+            if (slotTargetingArguments !== null) {
+              Object.keys(slotTargetingArguments).forEach((varName) => {
+                slot.gptSlot.setTargeting(varName, slotTargetingArguments[varName]);
+              });
+            }
+            slot.gptSlot.addService(googletag.pubads());
+            if (slot.sizeMapping) {
+              let smbuilder = googletag.sizeMapping();
+              slot.sizeMapping.forEach((mapping) => {
+                smbuilder = smbuilder.addSize(mapping.viewport, mapping.sizes);
+              });
+              slot.gptSlot.defineSizeMapping(smbuilder.build());
+            }
+          });
+        }
       });
 
       googletag.cmd.push(() => {
@@ -161,15 +165,15 @@ const DFPManager = Object.assign(new EventEmitter().setMaxListeners(0), {
   },
 
   registerSlot({
-        dfpNetworkId,
-        adUnit,
-        sizes,
-        renderOutOfThePage,
-        sizeMapping,
-        targetingArguments,
-        slotId,
-        slotShouldRefresh,
-    }) {
+    dfpNetworkId,
+    adUnit,
+    sizes,
+    renderOutOfThePage,
+    sizeMapping,
+    targetingArguments,
+    slotId,
+    slotShouldRefresh,
+  }) {
     if (!Object.prototype.hasOwnProperty.call(registeredSlots, slotId)) {
       registeredSlots[slotId] = {
         slotId,
