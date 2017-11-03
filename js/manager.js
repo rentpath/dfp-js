@@ -1,17 +1,26 @@
-import * as Utils from './utils';
 import { EventEmitter } from 'events';
+import * as Utils from './utils';
 
 let loadAlreadyCalled = false;
 let googleGPTScriptLoadPromise = null;
 const registeredSlots = {};
 const loadedGptSlots = {};
-let pubadsService = null;
 let managerAlreadyInitialized = false;
 const globalTargetingArguments = {};
 
-export const DFPManager = Object.assign(new EventEmitter(), {
+const DFPManager = Object.assign(new EventEmitter().setMaxListeners(0), {
   setTargetingArguments(data) {
     Object.assign(globalTargetingArguments, data);
+    if (managerAlreadyInitialized === true) {
+      this.getGoogletag().then((googletag) => {
+        googletag.cmd.push(() => {
+          const pubadsService = googletag.pubads();
+          Object.keys(globalTargetingArguments).forEach((varName) => {
+            pubadsService.setTargeting(varName, globalTargetingArguments[varName]);
+          });
+        });
+      });
+    }
   },
 
   getTargetingArguments() {
@@ -32,16 +41,14 @@ export const DFPManager = Object.assign(new EventEmitter(), {
       managerAlreadyInitialized = true;
       this.getGoogletag().then((googletag) => {
         googletag.cmd.push(() => {
-          pubadsService = googletag.pubads();
+          const pubadsService = googletag.pubads();
           pubadsService.addEventListener('slotRenderEnded', (event) => {
             const slotId = event.slot.getSlotElementId();
             this.emit('slotRenderEnded', { slotId, event });
           });
           const targetingArguments = this.getTargetingArguments();
           Object.keys(targetingArguments).forEach((varName) => {
-            if (targetingArguments.hasOwnProperty(varName)) {
-              pubadsService.setTargeting(varName, targetingArguments[varName]);
-            }
+            pubadsService.setTargeting(varName, targetingArguments[varName]);
           });
         });
       });
@@ -55,9 +62,14 @@ export const DFPManager = Object.assign(new EventEmitter(), {
     return googleGPTScriptLoadPromise;
   },
 
+  setCollapseEmptyDivs(collapse) {
+    this.collapseEmptyDivs = collapse;
+  },
+
   load(slotId) {
     this.init();
     let availableSlots = {};
+
     if (loadAlreadyCalled === true) {
       const slot = registeredSlots[slotId];
       if (slot !== undefined) {
@@ -70,12 +82,12 @@ export const DFPManager = Object.assign(new EventEmitter(), {
     availableSlots = Object.keys(availableSlots)
       .filter(id => !availableSlots[id].loading)
       .reduce(
-        (result, id) => Object.assign(
-          result,
-          { [id]: Object.assign(availableSlots[id], { loading: true }) }
-        ),
-        {}
-      );
+      (result, id) => Object.assign(
+        result, {
+          [id]: Object.assign(availableSlots[id], { loading: true }),
+        },
+      ), {},
+    );
     this.getGoogletag().then((googletag) => {
       Object.keys(availableSlots).forEach((currentSlotId) => {
         availableSlots[currentSlotId].loading = false;
@@ -95,9 +107,7 @@ export const DFPManager = Object.assign(new EventEmitter(), {
             const slotTargetingArguments = this.getSlotTargetingArguments(currentSlotId);
             if (slotTargetingArguments !== null) {
               Object.keys(slotTargetingArguments).forEach((varName) => {
-                if (slotTargetingArguments.hasOwnProperty(varName)) {
-                  slot.gptSlot.setTargeting(varName, slotTargetingArguments[varName]);
-                }
+                slot.gptSlot.setTargeting(varName, slotTargetingArguments[varName]);
               });
             }
             slot.gptSlot.addService(googletag.pubads());
@@ -114,11 +124,14 @@ export const DFPManager = Object.assign(new EventEmitter(), {
 
       googletag.cmd.push(() => {
         googletag.pubads().enableSingleRequest();
+
+        if (this.collapseEmptyDivs === true || this.collapseEmptyDivs === false) {
+          googletag.pubads().collapseEmptyDivs(this.collapseEmptyDivs);
+        }
+
         googletag.enableServices();
-        Object.keys(availableSlots).forEach((_slotId) => {
-          if (availableSlots.hasOwnProperty(_slotId)) {
-            googletag.display(_slotId);
-          }
+        Object.keys(availableSlots).forEach((theSlotId) => {
+          googletag.display(theSlotId);
         });
       });
     });
@@ -126,9 +139,7 @@ export const DFPManager = Object.assign(new EventEmitter(), {
   },
 
   getRefreshableSlots() {
-    const slotsToRefresh = Object.keys(registeredSlots).map(
-      (k) => registeredSlots[k]
-    );
+    const slotsToRefresh = Object.keys(registeredSlots).map(k => registeredSlots[k]);
     const slots = {};
     return slotsToRefresh.reduce((last, slot) => {
       if (slot.slotShouldRefresh() === true) {
@@ -146,20 +157,35 @@ export const DFPManager = Object.assign(new EventEmitter(), {
         const slotsToRefresh = this.getRefreshableSlots();
         googletag.cmd.push(() => {
           googletag.pubads().refresh(
-            Object.keys(slotsToRefresh).map(slotId => slotsToRefresh[slotId].gptSlot)
+            Object.keys(slotsToRefresh).map(slotId => slotsToRefresh[slotId].gptSlot),
           );
         });
       });
     }
   },
 
-  registerSlot({ dfpNetworkId, adUnit, sizes, renderOutOfThePage, sizeMapping,
-                 targetingArguments, slotId, slotShouldRefresh }) {
-    if (!registeredSlots.hasOwnProperty(slotId)) {
-      registeredSlots[slotId] = { slotId, sizes, renderOutOfThePage,
-                                  dfpNetworkId, adUnit, targetingArguments,
-                                  sizeMapping, slotShouldRefresh, loading: false,
-                                };
+  registerSlot({
+        dfpNetworkId,
+        adUnit,
+        sizes,
+        renderOutOfThePage,
+        sizeMapping,
+        targetingArguments,
+        slotId,
+        slotShouldRefresh,
+    }) {
+    if (!Object.prototype.hasOwnProperty.call(registeredSlots, slotId)) {
+      registeredSlots[slotId] = {
+        slotId,
+        sizes,
+        renderOutOfThePage,
+        dfpNetworkId,
+        adUnit,
+        targetingArguments,
+        sizeMapping,
+        slotShouldRefresh,
+        loading: false,
+      };
     }
     if (loadAlreadyCalled === true) {
       this.load(slotId);
@@ -183,3 +209,5 @@ export const DFPManager = Object.assign(new EventEmitter(), {
   },
 
 });
+
+export default DFPManager;
